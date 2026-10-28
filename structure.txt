@@ -1,0 +1,3063 @@
+================================================================================
+СТРУКТУРА ПАПКИ И СОДЕРЖИМОЕ ФАЙЛОВ
+Корневая директория: /home/mrdev/love/Projects/ПРОЕКТ «ФЕВРАЛЬ»
+Дата генерации: 2026-10-16 22:10:36
+================================================================================
+
+📂 СТРУКТУРА ДИРЕКТОРИЙ:
+
+ПРОЕКТ «ФЕВРАЛЬ»/
+├── 📁 assets/
+│   ├── 📁 fonts/
+│   │   ├── 📄 Title.ttf
+│   │   └── 📄 YahfieHeavy.ttf
+│   └── 📁 media/
+│       ├── 📄 bg.png
+│       ├── 📄 dtr-sch-mm-01.png
+│       ├── 📄 fil-slp-mm-01.png
+│       └── 📄 vilg-sch-mm-01.png
+├── 📁 chapters/
+│   └── 📁 ch-1/
+│       ├── 📁 assets/
+│       │   ├── 📁 bg/
+│       │   │   ├── 📄 apteka1.png
+│       │   │   ├── 📄 apteka2.png
+│       │   │   ├── 📄 dom_iznutri.png
+│       │   │   └── 📄 spalnya_bratiev.png
+│       │   └── 📁 characters/
+│       │       ├── 📁 dad/
+│       │       │   ├── 📄 baby_hold.png
+│       │       │   ├── 📄 dissapointed.png
+│       │       │   ├── 📄 looking1.png
+│       │       │   ├── 📄 looking2.png
+│       │       │   └── 📄 so_sorry.png
+│       │       └── 📁 mom/
+│       │           ├── 📄 baby-start.png
+│       │           ├── 📄 baby-start2.png
+│       │           ├── 📄 baby_sad.png
+│       │           └── 📄 sad.png
+│       ├── 📁 helpers/
+│       │   └── 📄 dialog.lua
+│       ├── 📄 init.lua
+│       └── 📄 meta.lua
+├── 📁 helpers/
+│   ├── 📄 chapters.lua
+│   ├── 📄 console.lua
+│   ├── 📄 fade.lua
+│   ├── 📄 menumaker.lua
+│   └── 📄 timer.lua
+├── 📄 conf.lua
+├── 📄 main-menu.lua
+└── 📄 main.lua
+
+================================================================================
+
+📄 СОДЕРЖИМОЕ ФАЙЛОВ:
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/main.lua
+============================================================
+local menu     = require("main-menu")
+local Timer    = require("helpers.timer")
+local mmaker   = require("helpers.menumaker")
+local Chapters = require("helpers.chapters")
+
+
+function love.load()
+  menu.load()
+  Chapters.scan()
+end
+
+
+function love.update(dt)
+  if mmaker.isActive then
+    mmaker.update(dt)
+    return
+  end
+
+  if Chapters.current then
+    if Chapters.current.update then Chapters.current.update(dt) end
+    return
+  end
+
+  Timer.update(dt)
+  menu.update(dt)
+end
+
+function love.draw()
+  if Chapters.current then
+    if Chapters.current.draw then Chapters.current.draw() end
+  else
+    menu.draw()
+  end
+  mmaker.draw()
+  
+end
+
+function love.mousemoved(x, y, dx, dy)
+  
+  if mmaker.mousemoved(x, y, dx, dy) then return end
+  if Chapters.current and Chapters.current.mousemoved then
+    Chapters.current.mousemoved(x, y, dx, dy)
+  end
+end
+
+function love.mousepressed(x, y, b)
+  
+  if mmaker.mousepressed(x, y, b) then return end
+  if Chapters.current then
+    if Chapters.current.mousepressed then Chapters.current.mousepressed(x, y, b) end
+    return
+  end
+  menu.mousepressed(x, y, b)
+end
+
+function love.keypressed(key)
+  
+
+  if key == "escape"
+     and love.keyboard.isDown("lctrl", "rctrl")
+     and love.keyboard.isDown("lshift", "rshift") then
+    if not mmaker.isActive then
+      mmaker.confirm("Выйти из игры?", function() love.event.quit() end)
+    end
+    return
+  end
+
+  if mmaker.keypressed(key) then return end
+
+  if Chapters.current and key == "escape" then
+    mmaker.confirm("Вернуться в главное меню?", function()
+      Chapters.unload()
+    end)
+    return
+  end
+
+  if Chapters.current and Chapters.current.keypressed then
+    Chapters.current.keypressed(key)
+  end
+end
+
+function love.mousereleased(x, y, b)
+  
+  if mmaker.mousereleased(x, y, b) then return end
+  if Chapters.current and Chapters.current.mousereleased then
+    Chapters.current.mousereleased(x, y, b)
+  end
+end
+
+function love.wheelmoved(x, y)
+  
+  if mmaker.wheelmoved(x, y) then return end
+  if Chapters.current and Chapters.current.wheelmoved then
+    Chapters.current.wheelmoved(x, y)
+  end
+end
+
+function love.quit()
+  mmaker.closeAll()
+  Chapters.unload()
+end
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/main-menu.lua
+============================================================
+-- main-menu.lua
+
+local menu = {}
+
+-- Загрузка внешних хэлперов
+local Timer = require("helpers.timer")
+local mmaker = require("helpers.menumaker")
+local Chapters = require("helpers.chapters")
+
+-- Переменные
+local titleText = "ПРОЕКТ\nФЕВРАЛЬ"
+local bgColor, btnColor, btnHoverColor, textColor
+
+-- Картинки в сцене
+local bgPic = love.graphics.newImage("assets/media/bg.png")
+
+  -- Шрифты сцены
+menu.titleFont  = love.graphics.newFont("assets/fonts/Title.ttf", 50) 
+menu.buttonFont = love.graphics.newFont("assets/fonts/YahfieHeavy.ttf", 24)
+
+-- Хелпер для создания кнопки
+local function newButton(x, y, w, h, text, onClick)
+  return {
+    x = x, y = y, w = w, h = h,
+    text = text,
+    isHover = false,
+    onClick = onClick,
+  }
+end
+
+function menu.load()
+  bgColor       = {0.3, 0.3, 0.3}
+  btnColor      = {0.5, 0.5, 0.5, 0.7}
+  btnHoverColor = {0.6, 0.6, 0.6, 0.7}
+  textColor     = {1, 1, 1}
+  
+  -- Персонажи
+  menu.images = {
+    love.graphics.newImage("assets/media/fil-slp-mm-01.png"),
+    love.graphics.newImage("assets/media/vilg-sch-mm-01.png"),
+    love.graphics.newImage("assets/media/dtr-sch-mm-01.png")
+  }
+
+  -- Параметры выезда
+  menu.slide = {
+    x = -300,
+    targetX = -70,
+    spacing = -290,
+    scale = 400 / menu.images[1]:getWidth(),
+    y = 200,
+    fadeTime = 0.8,
+    delay = 0.3,
+    shown = 0,
+    timer = 0,
+  }
+
+  Chapters.scan()
+  
+  -- КНОПКИ
+  menu.buttons = {
+    newButton(520, 180, 240, 40, "ВЫБОР ГЛАВЫ", function()
+  local items = {}
+  for _, ch in ipairs(Chapters.list) do
+    table.insert(items, {
+      text = (ch.subtitle and (ch.subtitle .. " — ") or "") .. ch.title,
+      style = ch.locked and "danger" or "default",
+      onClick = function()
+        if ch.locked then
+          mmaker.info("Глава заблокирована.")
+          return
+        end
+        mmaker.closeTop()
+        local ok, err = Chapters.load(ch)
+        if not ok then
+          mmaker.errorDefault("Не удалось загрузить главу:\n" .. tostring(err))
+        end
+      end,
+    })
+  end
+
+  if #items == 0 then
+    mmaker.info("Главы не найдены.\nПроверьте папку chapters/.")
+    return
+  end
+
+  mmaker.chapterSelect({
+    title    = "ВЫБОР ГЛАВЫ",
+    text     = "Выберите главу",
+    chapters = items,
+    width    = 480,
+    height   = 460,
+    itemH    = 46,
+  })
+end),
+    newButton(520, 240, 240, 40, "ПОМОЩЬ", function()
+        
+    end),
+    newButton(520, 300, 240, 40, "ВЫХОД", function()
+      mmaker.confirm("Выйти из игры?", function()
+        love.event.quit()
+      end)
+    end),
+  }
+end
+
+local function easeOutCubic(t)
+  return 1 - (1 - t) ^ 3
+end
+
+function menu.update(dt)
+  local mx, my = love.mouse.getPosition()
+
+  for _, b in ipairs(menu.buttons) do
+    b.isHover = mx > b.x and mx < b.x + b.w and my > b.y and my < b.y + b.h
+  end
+
+  local s = menu.slide
+  if s.shown < #menu.images then
+    s.timer = s.timer + dt
+    if s.timer >= s.fadeTime + s.delay then
+      s.timer = 0
+      s.shown = s.shown + 1
+    end
+  end
+end
+
+function menu.draw()
+  -- Фон
+  local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+  local iw, ih = bgPic:getWidth(), bgPic:getHeight()
+  local scale = math.max(sw / iw, sh / ih)
+
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.draw(bgPic, 0, 0, 0, scale, scale)
+
+  -- Карточка Меню
+  love.graphics.setColor(0, 0, 0, 0.4)
+  love.graphics.rectangle("fill", 500, 0, 280, 900, 0, 0)
+
+  -- Заголовок
+  love.graphics.setFont(menu.titleFont)
+  love.graphics.setColor(textColor)
+  local tw = menu.titleFont:getWidth(titleText)
+  love.graphics.print(titleText, love.graphics.getWidth() - tw - 50, 50)
+
+  -- Кнопки
+  love.graphics.setFont(menu.buttonFont)
+  for _, b in ipairs(menu.buttons) do
+    if b.isHover then
+      love.graphics.setColor(btnHoverColor)
+    else
+      love.graphics.setColor(btnColor)
+    end
+    love.graphics.rectangle("fill", b.x, b.y, b.w, b.h, 5, 5)
+
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print(b.text, b.x + 10, b.y + 10)
+  end
+
+  -- Персонажи выезд
+  local s = menu.slide
+  local w = menu.images[1]:getWidth()  * s.scale
+  local h = menu.images[1]:getHeight() * s.scale
+
+  for i = 1, #menu.images do
+    local finalX = s.targetX + (i - 1) * (w + s.spacing)
+
+    local progress
+    if i <= s.shown then
+      progress = 1
+    elseif i == s.shown + 1 then
+      progress = math.min(s.timer / s.fadeTime, 1)
+    else
+      progress = 0
+    end
+
+    if progress > 0 then
+      local p = easeOutCubic(progress)
+      local x = s.x + (finalX - s.x) * p
+      love.graphics.setColor(1, 1, 1, p)
+      love.graphics.draw(menu.images[i], x, s.y, 0, s.scale, s.scale)
+    end
+  end
+end
+
+function menu.mousepressed(x, y, btn)
+  if btn ~= 1 then return end
+  for _, b in ipairs(menu.buttons) do
+    if b.isHover then
+      -- Анимация нажатия
+      b.w = b.w - 1
+      b.h = b.h - 1
+      b.x = b.x + 1
+      b.y = b.y + 1
+      Timer.after(0.1, function()
+        b.w = b.w + 1
+        b.h = b.h + 1
+        b.x = b.x - 1
+        b.y = b.y - 1
+      end)
+
+      if b.onClick then b.onClick() end
+      break
+    end
+  end
+end
+
+return menu
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/conf.lua
+============================================================
+function love.conf(t)
+    t.window.title = "ПРОЕКТ «ФЕВРАЛЬ»"   -- заголовок окна
+    t.window.width = 800          -- ширина
+    t.window.height = 600         -- высота
+    t.window.resizable = false    -- можно ли менять размер
+    t.window.fullscreen = false   -- полноэкранный режим
+    t.window.vsync = 1            -- вертикальная синхронизация (0/1)
+    t.window.msaa = 0             -- сглаживание (0, 2, 4, 8, 16)
+    t.window.borderless = true   -- рамка
+    t.window.icon = nil           -- путь к иконке
+end
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/helpers/menumaker.lua
+============================================================
+-- helpers/menumaker.lua
+-- Модальные меню/диалоги для LÖVE 11.x
+-- Без анимаций. Автоматически замораживает игру, пока открыто окно.
+-- Поддерживает скроллируемые списки (для выбора глав).
+
+local mmaker = {}
+
+-- ============================================================
+-- СОСТОЯНИЕ
+-- ============================================================
+
+mmaker.windows = {}
+mmaker.isActive = false
+
+local SCROLLBAR_W = 12
+
+local fonts = {}
+local function getFonts()
+  if not fonts.title then
+    fonts.title  = love.graphics.newFont("assets/fonts/YahfieHeavy.ttf", 28)
+    fonts.text   = love.graphics.newFont("assets/fonts/YahfieHeavy.ttf", 18)
+    fonts.button = love.graphics.newFont("assets/fonts/YahfieHeavy.ttf", 16)
+  end
+  return fonts
+end
+
+-- ============================================================
+-- ЦВЕТА ПО УМОЛЧАНИЮ
+-- ============================================================
+
+local DEFAULT_COLORS = {
+  shadow      = {0, 0, 0, 0.55},
+  panel       = {0.12, 0.12, 0.14, 0.97},
+  border      = {0.35, 0.35, 0.38, 1},
+  titleBar    = {0.18, 0.18, 0.22, 1},
+  titleText   = {1, 1, 1, 1},
+  text        = {0.92, 0.92, 0.92, 1},
+  btn         = {0.25, 0.25, 0.25, 1},
+  btnHover    = {0.38, 0.38, 0.45, 1},
+  btnPressed  = {0.18, 0.18, 0.56, 1},
+  btnFocused  = {0.45, 0.45, 0.55, 1},
+  btnText     = {1, 1, 1, 1},
+  btnDanger   = {0.55, 0.20, 0.20, 1},
+  btnDangerHv = {0.72, 0.28, 0.28, 1},
+  btnPrimary  = {0.22, 0.42, 0.65, 1},
+  btnPrimaryHv= {0.30, 0.55, 0.82, 1},
+}
+
+local function copyColors(overrides)
+  local c = {}
+  for k, v in pairs(DEFAULT_COLORS) do c[k] = v end
+  if overrides then
+    for k, v in pairs(overrides) do c[k] = v end
+  end
+  return c
+end
+
+-- ============================================================
+-- УТИЛИТЫ
+-- ============================================================
+
+local function wrapText(font, text, maxWidth)
+  local lines = {}
+  for rawLine in tostring(text):gmatch("[^\n]*") do
+    if rawLine == "" then
+      table.insert(lines, "")
+    else
+      local current = ""
+      for word in rawLine:gmatch("%S+") do
+        local test = (current == "") and word or (current .. " " .. word)
+        if font:getWidth(test) <= maxWidth then
+          current = test
+        else
+          if current ~= "" then table.insert(lines, current) end
+          if font:getWidth(word) > maxWidth then
+            local chunk = ""
+            for i = 1, #word do
+              local c = word:sub(i, i)
+              if font:getWidth(chunk .. c) > maxWidth and chunk ~= "" then
+                table.insert(lines, chunk)
+                chunk = c
+              else
+                chunk = chunk .. c
+              end
+            end
+            current = chunk
+          else
+            current = word
+          end
+        end
+      end
+      if current ~= "" then table.insert(lines, current) end
+    end
+  end
+  return lines
+end
+
+-- ============================================================
+-- СОЗДАНИЕ ОКНА
+-- ============================================================
+
+function mmaker.open(opts)
+  opts = opts or {}
+  local F = getFonts()
+
+  local win = {
+    title     = opts.title or "",
+    text      = opts.text or "",
+    buttons   = {},
+    width     = opts.width or 420,
+    height    = opts.height,
+    closable  = opts.closable or false,
+    onClose   = opts.onClose,
+    colors    = copyColors(opts.colors),
+    modal     = (opts.modal ~= false),
+    drawBehind= opts.drawBehind,
+
+    focused   = 1,
+    mx        = 0,
+    my        = 0,
+    hovered   = nil,
+    pressed   = nil,
+  }
+
+  local srcButtons = opts.buttons or {
+    { text = "OK", style = "primary" }
+  }
+  for i, b in ipairs(srcButtons) do
+    win.buttons[i] = {
+      text     = b.text or ("Кнопка " .. i),
+      onClick  = b.onClick,
+      style    = b.style or "default",
+      w        = 0,
+      h        = 34,
+      x        = 0,
+      y        = 0,
+      hovered  = false,
+      pressed  = false,
+    }
+  end
+
+  mmaker._layout(win, F)
+
+  table.insert(mmaker.windows, win)
+  mmaker.isActive = true
+  win.focused = 1
+
+  return win
+end
+
+function mmaker.close(win)
+  if not win then return end
+  for i = #mmaker.windows, 1, -1 do
+    if mmaker.windows[i] == win then
+      table.remove(mmaker.windows, i)
+      break
+    end
+  end
+  if win.onClose then win.onClose() end
+  mmaker.isActive = #mmaker.windows > 0
+end
+
+function mmaker.closeTop()
+  local win = mmaker.windows[#mmaker.windows]
+  if win then mmaker.close(win) end
+end
+
+function mmaker.closeAll()
+  for i = #mmaker.windows, 1, -1 do
+    local w = mmaker.windows[i]
+    if w.onClose then w.onClose() end
+  end
+  mmaker.windows = {}
+  mmaker.isActive = false
+end
+
+-- ============================================================
+-- ГЕОМЕТРИЯ
+-- ============================================================
+
+function mmaker._layout(win, F)
+  F = F or getFonts()
+  local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+
+  local panelW = math.min(win.width, sw - 40)
+
+  local textPad  = 20
+  local titleH   = (win.title ~= "") and (F.title:getHeight() + 16) or 0
+  local wrapW    = panelW - textPad * 2
+  local lines    = wrapText(F.text, win.text, wrapW)
+  local lineH    = F.text:getHeight() * 1.25
+  local textH    = #lines * lineH
+
+  local btnGap   = 10
+  local btnPadX  = 20
+  local btnPadY  = 16
+  local btnH     = 34
+  local btnAreaH = btnH + btnPadY * 2
+
+  local panelH = win.height
+  if not panelH then
+    panelH = titleH + textPad + textH + btnAreaH + 10
+    panelH = math.max(panelH, 140)
+  end
+  panelH = math.min(panelH, sh - 40)
+
+  win.panelW = panelW
+  win.panelH = panelH
+  win.px = (sw - panelW) / 2
+  win.py = (sh - panelH) / 2
+
+  win._lines   = lines
+  win._lineH   = lineH
+  win._textPad = textPad
+  win._titleH  = titleH
+
+  local n = #win.buttons
+  if n > 0 then
+    local availW = panelW - btnPadX * 2
+    local totalGap = btnGap * (n - 1)
+    local bw = (availW - totalGap) / n
+    bw = math.min(bw, 160)
+    local totalW = bw * n + totalGap
+    local startX = win.px + (panelW - totalW) / 2
+    local by = win.py + panelH - btnPadY - btnH
+    for i, b in ipairs(win.buttons) do
+      b.w = bw
+      b.h = btnH
+      b.x = startX + (i - 1) * (bw + btnGap)
+      b.y = by
+    end
+  end
+end
+
+-- ============================================================
+-- ГЕОМЕТРИЯ СКРОЛЛА
+-- ============================================================
+
+function mmaker._layoutScroll(win, F)
+  F = F or getFonts()
+  local panelW = win.panelW
+  local panelH = win.panelH
+
+  local titleH = win._titleH or 0
+  local padX   = 16
+
+  -- Верх области списка: под заголовком + отступ
+  local topY = win.py + titleH + 12
+
+  -- Низ области списка: над кнопками (если есть) либо до низа панели
+  local bottomY
+  if #win.buttons > 0 then
+    -- Кнопки рисуются в _layout: by = py + panelH - 16 - 34
+    -- Оставляем 10px зазор над кнопками.
+    bottomY = win.py + panelH - 16 - 34 - 10
+  else
+    bottomY = win.py + panelH - 16
+  end
+
+  win.viewH  = math.max(20, bottomY - topY)
+  win._viewX = win.px + padX
+  win._viewY = topY
+  win._viewW = panelW - padX * 2 - SCROLLBAR_W - 6
+
+  local n = #win.items
+  local totalH = n * win.itemH + math.max(0, n - 1) * win.itemGap
+  win.maxScroll = math.max(0, totalH - win.viewH)
+  if win.scroll > win.maxScroll then win.scroll = win.maxScroll end
+  if win.scroll < 0 then win.scroll = 0 end
+
+  win._itemRects = {}
+  for i, it in ipairs(win.items) do
+    local ry = win._viewY + (i - 1) * (win.itemH + win.itemGap) - win.scroll
+    it._x = win._viewX
+    it._y = ry
+    it._w = win._viewW
+    it._h = win.itemH
+    it._visible = (ry + it._h > win._viewY) and (ry < win._viewY + win.viewH)
+    table.insert(win._itemRects, it)
+  end
+
+  local trackX = win.px + panelW - padX - SCROLLBAR_W
+  local trackY = win._viewY
+  local trackH = win.viewH
+  win._trackRect = { x = trackX, y = trackY, w = SCROLLBAR_W, h = trackH }
+
+  if win.maxScroll > 0 then
+    local thumbH = math.max(30, trackH * (win.viewH / (win.viewH + win.maxScroll)))
+    local t = win.scroll / win.maxScroll
+    local thumbY = trackY + t * (trackH - thumbH)
+    win._thumbRect = { x = trackX, y = thumbY, w = SCROLLBAR_W, h = thumbH }
+  else
+    win._thumbRect = nil
+  end
+end
+
+function mmaker._updateScroll(win, mx, my)
+  win.hoveredItem = nil
+
+  -- Если мышь вне области списка — ничего не наводим
+  local inView = mx >= win._viewX and mx <= win._viewX + win._viewW
+             and my >= win._viewY and my <= win._viewY + win.viewH
+
+  for i, it in ipairs(win.items) do
+    local inside = inView and it._visible
+      and mx >= it._x and mx <= it._x + it._w
+      and my >= it._y and my <= it._y + it._h
+    it.hovered = inside
+    if inside then
+      win.hoveredItem = i
+      win.focused = i
+      win._kbFocus = false
+    end
+  end
+
+  win._thumbHover = false
+  if win._thumbRect then
+    local r = win._thumbRect
+    win._thumbHover = mx >= r.x - 2 and mx <= r.x + r.w + 2
+                  and my >= r.y and my <= r.y + r.h
+  end
+end
+
+function mmaker._drawScroll(win, F)
+  local C = win.colors
+
+  -- Включаем отсечение по области списка
+  love.graphics.setScissor(win._viewX - 4, win._viewY - 4,
+                           win._viewW + 8, win.viewH + 8)
+
+  -- Лёгкая подложка списка
+  love.graphics.setColor(0, 0, 0, 0.15)
+  love.graphics.rectangle("fill", win._viewX - 4, win._viewY - 4,
+                          win._viewW + 8, win.viewH + 8, 6, 6)
+
+  -- Элементы
+  love.graphics.setFont(F.button)
+  for i, it in ipairs(win.items) do
+    if it._visible then
+      local col = C.btn
+      if it.style == "primary" then col = C.btnPrimary end
+      if it.style == "danger"  then col = C.btnDanger  end
+
+      if it.pressed then
+        col = C.btnPressed
+      elseif it.hovered or (win.focused == i and win._kbFocus) then
+        if it.style == "primary" then col = C.btnPrimaryHv
+        elseif it.style == "danger" then col = C.btnDangerHv
+        else col = C.btnHover end
+      end
+
+      love.graphics.setColor(col)
+      love.graphics.rectangle("fill", it._x, it._y, it._w, it._h, 4, 4)
+
+      love.graphics.setColor(C.btnText)
+      love.graphics.printf(it.text, it._x + 12,
+        it._y + (it._h - F.button:getHeight()) / 2,
+        it._w - 24, "left")
+    end
+  end
+
+  -- Рамка области списка
+  love.graphics.setColor(C.border)
+  love.graphics.rectangle("line", win._viewX - 4, win._viewY - 4,
+                          win._viewW + 8, win.viewH + 8, 6, 6)
+
+  -- Выключаем scissor для скроллбара
+  love.graphics.setScissor()
+
+  -- Слайдер
+  local tr = win._trackRect
+  love.graphics.setColor(0, 0, 0, 0.35)
+  love.graphics.rectangle("fill", tr.x, tr.y, tr.w, tr.h, 6, 6)
+
+  if win._thumbRect then
+    local r = win._thumbRect
+    local c
+    if win._thumbHover or win._dragging then
+      c = {0.6, 0.6, 0.7, 1}
+    else
+      c = {0.45, 0.45, 0.5, 1}
+    end
+    love.graphics.setColor(c)
+    love.graphics.rectangle("fill", r.x + 2, r.y, r.w - 4, r.h, 5, 5)
+  end
+end
+
+-- ============================================================
+-- ПУБЛИЧНЫЙ API: chapterSelect
+-- ============================================================
+
+--- Окно выбора глав с вертикальным скроллом.
+-- @param opts table:
+--   title    - заголовок окна
+--   text     - описание (опционально)
+--   chapters - массив { { text=, onClick=, style= }, ... }
+--   buttons  - нижние кнопки (по умолч. "НАЗАД")
+--   width    - ширина окна (по умолч. 460)
+--   height   - высота окна (по умолч. 420)
+--   itemH    - высота элемента (по умолч. 44)
+--   itemGap  - отступ между элементами (по умолч. 6)
+--   closable - можно ли закрыть (по умолч. true)
+--   colors   - переопределение цветов
+function mmaker.chapterSelect(opts)
+  opts = opts or {}
+  local F = getFonts()
+
+  local win = {
+    title      = opts.title or "ВЫБОР ГЛАВЫ",
+    text       = opts.text or "",
+    buttons    = {},
+    items      = {},
+    width      = opts.width  or 460,
+    height     = opts.height or 420,
+    closable   = opts.closable ~= false,
+    onClose    = opts.onClose,
+    colors     = copyColors(opts.colors),
+    modal      = true,
+    scrollable = true,
+    itemH      = opts.itemH or 44,
+    itemGap    = opts.itemGap or 6,
+    scroll     = 0,
+    focused    = 1,
+    _kbFocus   = false,
+    _dragging  = false,
+    _dragOffY  = 0,
+  }
+
+  for i, ch in ipairs(opts.chapters or {}) do
+    win.items[i] = {
+      text    = ch.text or ("Глава " .. i),
+      onClick = ch.onClick,
+      style   = ch.style or "default",
+      hovered = false,
+      pressed = false,
+    }
+  end
+
+  local srcButtons = opts.buttons or {
+    { text = "НАЗАД", style = "default",
+      onClick = function() mmaker.closeTop() end },
+  }
+  for i, b in ipairs(srcButtons) do
+    win.buttons[i] = {
+      text    = b.text or ("Кнопка " .. i),
+      onClick = b.onClick,
+      style   = b.style or "default",
+      w = 0, h = 34, x = 0, y = 0,
+      hovered = false, pressed = false,
+    }
+  end
+
+  mmaker._layout(win, F)
+  mmaker._layoutScroll(win, F)
+
+  table.insert(mmaker.windows, win)
+  mmaker.isActive = true
+  return win
+end
+
+-- ============================================================
+-- ОБНОВЛЕНИЕ
+-- ============================================================
+
+function mmaker.update(dt)
+  if not mmaker.isActive then return end
+
+  local F = getFonts()
+  local mx, my = love.mouse.getPosition()
+
+  for _, win in ipairs(mmaker.windows) do
+    mmaker._layout(win, F)
+    if win.scrollable then
+      mmaker._layoutScroll(win, F)
+    end
+    win.mx, win.my = mx, my
+    win.hovered = nil
+
+    local isTop = (win == mmaker.windows[#mmaker.windows])
+
+    if isTop then
+      if win.scrollable then
+        mmaker._updateScroll(win, mx, my)
+      else
+        for i, b in ipairs(win.buttons) do
+          local isHover = mx >= b.x and mx <= b.x + b.w
+                      and my >= b.y and my <= b.y + b.h
+          b.hovered = isHover
+          if isHover then win.hovered = i end
+        end
+      end
+      -- Нижние кнопки в любом случае
+      for i, b in ipairs(win.buttons) do
+        b.hovered = mx >= b.x and mx <= b.x + b.w
+                and my >= b.y and my <= b.y + b.h
+      end
+    else
+      for _, b in ipairs(win.buttons) do b.hovered = false end
+      if win.scrollable then
+        for _, it in ipairs(win.items) do it.hovered = false end
+      end
+    end
+  end
+end
+
+-- ============================================================
+-- ОТРИСОВКА
+-- ============================================================
+
+function mmaker.draw()
+  if not mmaker.isActive then return end
+
+  local F = getFonts()
+
+  for _, win in ipairs(mmaker.windows) do
+    if win.drawBehind then
+      win.drawBehind()
+    elseif win.modal then
+      love.graphics.setColor(win.colors.shadow)
+      love.graphics.rectangle("fill", 0, 0,
+        love.graphics.getWidth(), love.graphics.getHeight())
+    end
+
+    local C = win.colors
+
+    -- Панель
+    love.graphics.setColor(C.panel)
+    love.graphics.rectangle("fill", win.px, win.py, win.panelW, win.panelH)
+
+    -- Заголовок
+    local y = win.py
+    if win.title ~= "" then
+      love.graphics.setFont(F.title)
+      love.graphics.setColor(C.titleText)
+      love.graphics.printf(win.title, win.px, win.py + 8, win.panelW, "center")
+      y = win.py + win._titleH
+    end
+
+    -- Текст (для скролла — только если он есть)
+    local drawText = true
+    if win.scrollable and (not win.text or win.text == "") then
+      drawText = false
+    end
+    if drawText then
+      love.graphics.setFont(F.text)
+      love.graphics.setColor(C.text)
+      local ty = y + win._textPad
+      for _, line in ipairs(win._lines) do
+        love.graphics.printf(line, win.px + win._textPad, ty,
+          win.panelW - win._textPad * 2, "center")
+        ty = ty + win._lineH
+      end
+    end
+
+    -- Скроллируемый список
+    if win.scrollable then
+      mmaker._drawScroll(win, F)
+    end
+
+    -- Нижние кнопки
+    love.graphics.setFont(F.button)
+    for i, b in ipairs(win.buttons) do
+      local col = C.btn
+      if b.style == "danger"  then col = C.btnDanger  end
+      if b.style == "primary" then col = C.btnPrimary end
+
+      if b.pressed then
+        col = C.btnPressed
+      elseif b.hovered then
+        col = C.btnHover
+      end
+
+      love.graphics.setColor(col)
+      love.graphics.rectangle("fill", b.x, b.y, b.w, b.h)
+
+      love.graphics.setColor(C.btnText)
+      love.graphics.printf(b.text, b.x,
+        b.y + (b.h - F.button:getHeight()) / 2, b.w, "center")
+    end
+  end
+end
+
+-- ============================================================
+-- ВВОД
+-- ============================================================
+
+function mmaker.mousepressed(x, y, button)
+  if not mmaker.isActive or button ~= 1 then return false end
+  local win = mmaker.windows[#mmaker.windows]
+  if not win then return false end
+
+  -- 1) Слайдер
+  if win.scrollable then
+    if win._thumbRect then
+      local r = win._thumbRect
+      if x >= r.x - 4 and x <= r.x + r.w + 4
+         and y >= r.y and y <= r.y + r.h then
+        win._dragging = true
+        win._dragOffY = y - r.y
+        return true
+      end
+      local tr = win._trackRect
+      if x >= tr.x and x <= tr.x + tr.w
+         and y >= tr.y and y <= tr.y + tr.h then
+        local t = (y - tr.y - (r.h / 2)) / (tr.h - r.h)
+        t = math.max(0, math.min(1, t))
+        win.scroll = t * win.maxScroll
+        return true
+      end
+    end
+
+    -- 2) Элементы списка (только если в области списка)
+    local inView = x >= win._viewX and x <= win._viewX + win._viewW
+               and y >= win._viewY and y <= win._viewY + win.viewH
+    if inView then
+      for i, it in ipairs(win.items) do
+        if it._visible
+           and x >= it._x and x <= it._x + it._w
+           and y >= it._y and y <= it._y + it._h then
+          it.pressed = true
+          win.focused = i
+          win._kbFocus = false
+          return true
+        end
+      end
+    end
+  end
+
+  -- 3) Нижние кнопки
+  for i, b in ipairs(win.buttons) do
+    if x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h then
+      b.pressed = true
+      win.focused = i
+      return true
+    end
+  end
+
+  local inside = x >= win.px and x <= win.px + win.panelW
+             and y >= win.py and y <= win.py + win.panelH
+  if not inside and win.closable then
+    mmaker.close(win)
+  end
+  return true
+end
+
+function mmaker.mousereleased(x, y, button)
+  if not mmaker.isActive or button ~= 1 then return false end
+  local win = mmaker.windows[#mmaker.windows]
+  if not win then return false end
+
+  -- Ползунок
+  if win.scrollable and win._dragging then
+    win._dragging = false
+    return true
+  end
+
+  -- Элементы
+  if win.scrollable then
+    for _, it in ipairs(win.items) do
+      if it.pressed then
+        it.pressed = false
+        local inside = it._visible
+          and x >= it._x and x <= it._x + it._w
+          and y >= it._y and y <= it._y + it._h
+        if inside and it.onClick then it.onClick() end
+        return true
+      end
+    end
+  end
+
+  -- Нижние кнопки
+  for _, b in ipairs(win.buttons) do
+    if b.pressed then
+      b.pressed = false
+      local inside = x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h
+      if inside and b.onClick then b.onClick() end
+      return true
+    end
+  end
+  return true
+end
+
+function mmaker.wheelmoved(x, y)
+  if not mmaker.isActive then return false end
+  local win = mmaker.windows[#mmaker.windows]
+  if not win then return false end
+
+  if win.scrollable then
+    win.scroll = win.scroll - y * (win.itemH + win.itemGap)
+    win.scroll = math.max(0, math.min(win.maxScroll, win.scroll))
+    return true
+  end
+
+  if y ~= 0 and #win.buttons > 0 then
+    win.focused = win.focused + (y > 0 and -1 or 1)
+    if win.focused < 1 then win.focused = #win.buttons end
+    if win.focused > #win.buttons then win.focused = 1 end
+  end
+  return true
+end
+
+function mmaker.keypressed(key)
+  if not mmaker.isActive then return false end
+  local win = mmaker.windows[#mmaker.windows]
+  if not win then return false end
+
+  -- Скроллируемый список
+  if win.scrollable then
+    local n = #win.items
+    if key == "up" or key == "w" then
+      win._kbFocus = true
+      win.focused = math.max(1, win.focused - 1)
+      mmaker._scrollToFocused(win)
+      return true
+    elseif key == "down" or key == "s" then
+      win._kbFocus = true
+      win.focused = math.min(n, win.focused + 1)
+      mmaker._scrollToFocused(win)
+      return true
+    elseif key == "pageup" then
+      win._kbFocus = true
+      win.scroll = math.max(0, win.scroll - win.viewH)
+      return true
+    elseif key == "pagedown" then
+      win._kbFocus = true
+      win.scroll = math.min(win.maxScroll, win.scroll + win.viewH)
+      return true
+    elseif key == "home" then
+      win._kbFocus = true
+      win.focused = 1
+      win.scroll = 0
+      return true
+    elseif key == "end" then
+      win._kbFocus = true
+      win.focused = n
+      mmaker._scrollToFocused(win)
+      return true
+    elseif key == "return" or key == "kpenter" or key == "space" then
+      local it = win.items[win.focused]
+      if it and it.onClick then it.onClick() end
+      return true
+    elseif key == "escape" then
+      if win.closable then mmaker.close(win) end
+      return true
+    end
+    return true
+  end
+
+  -- Обычное окно с кнопками
+  if key == "left" or key == "a" then
+    win.focused = win.focused - 1
+    if win.focused < 1 then win.focused = #win.buttons end
+    return true
+  elseif key == "right" or key == "d" then
+    win.focused = win.focused + 1
+    if win.focused > #win.buttons then win.focused = 1 end
+    return true
+  elseif key == "tab" then
+    win.focused = win.focused + 1
+    if win.focused > #win.buttons then win.focused = 1 end
+    return true
+  elseif key == "return" or key == "kpenter" or key == "space" then
+    local b = win.buttons[win.focused]
+    if b and b.onClick then b.onClick() end
+    return true
+  elseif key == "escape" then
+    if win.closable then mmaker.close(win) end
+    return true
+  end
+  return true
+end
+
+function mmaker.mousemoved(x, y, dx, dy)
+  if not mmaker.isActive then return false end
+  local win = mmaker.windows[#mmaker.windows]
+  if win and win.scrollable and win._dragging and win._thumbRect then
+    local tr = win._trackRect
+    local t = (y - tr.y - win._dragOffY) / (tr.h - win._thumbRect.h)
+    t = math.max(0, math.min(1, t))
+    win.scroll = t * win.maxScroll
+    return true
+  end
+  return mmaker.isActive
+end
+
+function mmaker.textinput(text)
+  return mmaker.isActive
+end
+
+-- Автоскролл к выбранному элементу
+function mmaker._scrollToFocused(win)
+  local it = win.items[win.focused]
+  if not it then return end
+  local top    = (win.focused - 1) * (win.itemH + win.itemGap)
+  local bottom = top + win.itemH
+
+  if top < win.scroll then
+    win.scroll = top
+  elseif bottom > win.scroll + win.viewH then
+    win.scroll = bottom - win.viewH
+  end
+  win.scroll = math.max(0, math.min(win.maxScroll, win.scroll))
+end
+
+-- ============================================================
+-- ПРЕСЕТЫ
+-- ============================================================
+
+function mmaker.dialogMenu(name, text, butt1, butt2, butt3, butt4, opts)
+  local buttons = {}
+  local function add(b)
+    if not b then return end
+    if type(b) == "string" then
+      table.insert(buttons, { text = b, style = "default" })
+    elseif type(b) == "table" then
+      table.insert(buttons, b)
+    end
+  end
+  add(butt1); add(butt2); add(butt3); add(butt4)
+
+  opts = opts or {}
+  opts.title   = name
+  opts.text    = text
+  opts.buttons = buttons
+  if opts.closable == nil then opts.closable = true end
+  return mmaker.open(opts)
+end
+
+function mmaker.errorDefault(errorText, butt1, butt2, opts)
+  opts = opts or {}
+  opts.title = opts.title or "Ошибка"
+  opts.text  = errorText
+  opts.buttons = {
+    { text = butt1 or "ОК", style = "primary",
+      onClick = function() mmaker.closeTop() end },
+  }
+  if butt2 then
+    table.insert(opts.buttons, {
+      text = butt2, style = "default",
+      onClick = function() mmaker.closeTop() end,
+    })
+  end
+  opts.closable = true
+  return mmaker.open(opts)
+end
+
+function mmaker.errorFatal(errorText, exitButt, opts)
+  opts = opts or {}
+  opts.title = opts.title or "Критическая ошибка"
+  opts.text  = errorText
+  opts.buttons = {
+    { text = exitButt or "ВЫЙТИ", style = "danger",
+      onClick = function() love.event.quit() end },
+  }
+  opts.closable = false
+  return mmaker.open(opts)
+end
+
+function mmaker.info(text, opts)
+  opts = opts or {}
+  opts.title = opts.title or "Информация"
+  opts.text  = text
+  opts.buttons = opts.buttons or {
+    { text = "ОК", style = "primary",
+      onClick = function() mmaker.closeTop() end },
+  }
+  opts.closable = true
+  return mmaker.open(opts)
+end
+
+function mmaker.confirm(text, onYes, onNo, opts)
+  opts = opts or {}
+  opts.title = opts.title or "Подтверждение"
+  opts.text  = text
+  opts.buttons = {
+    { text = opts.yesText or "ДА", style = "primary",
+      onClick = function()
+        mmaker.closeTop()
+        if onYes then onYes() end
+      end },
+    { text = opts.noText or "НЕТ", style = "default",
+      onClick = function()
+        mmaker.closeTop()
+        if onNo then onNo() end
+      end },
+  }
+  opts.closable = true
+  return mmaker.open(opts)
+end
+
+return mmaker
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/helpers/chapters.lua
+============================================================
+-- helpers/chapters.lua
+-- Сканирует папку chapters/ и загружает метаданные каждой главы.
+
+local Chapters = {}
+
+local CHAPTERS_DIR = "chapters"
+local META_FILE    = "meta.lua"
+local INIT_FILE    = "init.lua"
+
+Chapters.list        = {}
+Chapters.current     = nil
+Chapters.currentMeta = nil
+
+-- ============================================================
+-- СКАНИРОВАНИЕ
+-- ============================================================
+
+function Chapters.scan()
+  Chapters.list = {}
+
+  local items = love.filesystem.getDirectoryItems(CHAPTERS_DIR)
+  for _, name in ipairs(items) do
+    local dir = CHAPTERS_DIR .. "/" .. name
+    local info = love.filesystem.getInfo(dir)
+    if info and info.type == "directory" then
+      local metaPath = dir .. "/" .. META_FILE
+      local chunk = love.filesystem.load(metaPath)
+      if chunk then
+        local ok, meta = pcall(chunk)
+        if ok and type(meta) == "table" then
+          meta._dir  = dir
+          meta._name = name
+          if not meta.id    then meta.id    = name  end
+          if not meta.order then meta.order = 999   end
+          if not meta.title then meta.title = name  end
+          table.insert(Chapters.list, meta)
+        else
+          print("[chapters] Ошибка чтения meta: " .. metaPath .. " — " .. tostring(meta))
+        end
+      end
+    end
+  end
+
+  table.sort(Chapters.list, function(a, b)
+    if a.order ~= b.order then return a.order < b.order end
+    return tostring(a.id) < tostring(b.id)
+  end)
+end
+
+-- ============================================================
+-- ЗАГРУЗКА / ВЫГРУЗКА
+-- ============================================================
+
+function Chapters.load(meta)
+  if not meta then return false, "meta is nil" end
+  if Chapters.current then
+    if Chapters.current.unload then Chapters.current.unload() end
+  end
+
+  local path = meta._dir .. "/" .. INIT_FILE
+  local chunk = love.filesystem.load(path)
+  if not chunk then
+    print("[chapters] Не найден файл: " .. path)
+    return false, "init.lua not found"
+  end
+
+  local ok, chapter = pcall(chunk)
+  if not ok then
+    print("[chapters] Не удалось загрузить: " .. path .. " — " .. tostring(chapter))
+    return false, chapter
+  end
+
+  Chapters.current     = chapter
+  Chapters.currentMeta = meta
+  if chapter.load then chapter.load(meta) end
+  return true
+end
+
+function Chapters.unload()
+  if Chapters.current and Chapters.current.unload then
+    Chapters.current.unload()
+  end
+  Chapters.current     = nil
+  Chapters.currentMeta = nil
+end
+
+return Chapters
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/helpers/fade.lua
+============================================================
+-- helpers/fade.lua
+-- Универсальный чёрный fade-слой.
+--   Fade.fadeIn(duration, onDone)   -- из чёрного в прозрачный
+--   Fade.fadeOut(duration, onDone)  -- из прозрачного в чёрный
+--   Fade.set(alpha)                 -- мгновенно выставить альфу
+--   Fade.update(dt)
+--   Fade.draw()
+
+local Fade = {}
+
+Fade.alpha    = 0        -- 1 = чёрный, 0 = прозрачный
+Fade.color    = {0, 0, 0}
+Fade.active   = false
+Fade.mode     = nil      -- "in" | "out" | nil
+Fade.timer    = 0
+Fade.duration = 0
+Fade.fromA    = 0
+Fade.toA      = 0
+Fade.onDone   = nil
+
+-- ============================================================
+-- ПУБЛИЧНОЕ API
+-- ============================================================
+
+--- Мгновенно установить альфу, без анимации.
+function Fade.set(a)
+  Fade.alpha    = math.max(0, math.min(1, a))
+  Fade.active   = Fade.alpha > 0
+  Fade.mode     = nil
+  Fade.timer    = 0
+  Fade.duration = 0
+  Fade.onDone   = nil
+end
+
+--- Плавно убрать чёрный (из чёрного в прозрачный).
+function Fade.fadeIn(duration, onDone)
+  duration = duration or 1
+  Fade.fromA    = Fade.alpha
+  Fade.toA      = 0
+  Fade.duration = duration
+  Fade.timer    = 0
+  Fade.mode     = "in"
+  Fade.active   = true
+  Fade.onDone   = onDone
+end
+
+--- Плавно наложить чёрный (из прозрачного в чёрный).
+function Fade.fadeOut(duration, onDone)
+  duration = duration or 1
+  Fade.fromA    = Fade.alpha
+  Fade.toA      = 1
+  Fade.duration = duration
+  Fade.timer    = 0
+  Fade.mode     = "out"
+  Fade.active   = true
+  Fade.onDone   = onDone
+end
+
+--- Отменить текущий переход.
+function Fade.cancel()
+  Fade.mode   = nil
+  Fade.active = Fade.alpha > 0
+  Fade.onDone = nil
+end
+
+-- ============================================================
+-- ОБНОВЛЕНИЕ
+-- ============================================================
+
+local function easeInOut(t)
+  return t * t * (3 - 2 * t)
+end
+
+function Fade.update(dt)
+  if not Fade.mode then return end
+
+  Fade.timer = Fade.timer + dt
+  local t = Fade.duration > 0 and (Fade.timer / Fade.duration) or 1
+  if t > 1 then t = 1 end
+
+  local e = easeInOut(t)
+  Fade.alpha = Fade.fromA + (Fade.toA - Fade.fromA) * e
+
+  if t >= 1 then
+    Fade.alpha  = Fade.toA
+    Fade.mode   = nil
+    Fade.active = Fade.alpha > 0
+    local cb = Fade.onDone
+    Fade.onDone = nil
+    if cb then cb() end
+  end
+end
+
+-- ============================================================
+-- ОТРИСОВКА
+-- ============================================================
+
+function Fade.draw()
+  if Fade.alpha <= 0 then return end
+  love.graphics.setColor(Fade.color[1], Fade.color[2], Fade.color[3], Fade.alpha)
+  love.graphics.rectangle("fill", 0, 0,
+    love.graphics.getWidth(), love.graphics.getHeight())
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
+return Fade
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/helpers/console.lua
+============================================================
+-- helpers/console.lua
+-- Игровая консоль: перехватывает print() и вывод ошибок LÖVE,
+-- показывает оверлей по Alt+F1.
+
+local console = {}
+
+-- ============================================================
+-- СОСТОЯНИЕ
+-- ============================================================
+
+console.isOpen   = false
+console.lines    = {}          -- { {text=, color=} , ... }
+console.maxLines = 500         -- сколько строк храним в буфере
+console.scroll   = 0           -- сколько строк прокручено от низа
+console.visible  = true        -- рисуем ли оверлей
+
+local FONT_SIZE  = 14
+local PAD        = 10
+local LINE_H     = FONT_SIZE + 4
+
+local font       = nil
+
+-- Сохранённый оригинальный print
+local originalPrint = print
+
+-- ============================================================
+-- ЦВЕТА
+-- ============================================================
+
+local C = {
+  bg      = {0, 0, 0, 0.82},
+  border  = {0.35, 0.35, 0.4, 1},
+  info    = {0.92, 0.92, 0.92, 1},
+  warn    = {1.0, 0.85, 0.3, 1},
+  error   = {1.0, 0.4, 0.4, 1},
+  system  = {0.5, 0.85, 1.0, 1},
+  input   = {0.6, 1.0, 0.6, 1},
+}
+
+-- ============================================================
+-- ДОБАВЛЕНИЕ СТРОК
+-- ============================================================
+
+--- Добавить строку в буфер.
+-- @param text string
+-- @param color table|nil  {r,g,b,a}
+function console.push(text, color)
+  text = tostring(text)
+  -- Многострочные сообщения разбиваем
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+    table.insert(console.lines, { text = line, color = color or C.info })
+  end
+
+  -- Обрезаем буфер
+  local overflow = #console.lines - console.maxLines
+  if overflow > 0 then
+    for _ = 1, overflow do table.remove(console.lines, 1) end
+    console.scroll = math.max(0, console.scroll - overflow)
+  end
+
+  -- Автоскролл вниз при открытой консоли, если пользователь не отлистал
+  if console.isOpen and console.scroll == 0 then
+    -- ничего: scroll==0 означает "прижат к низу"
+  end
+end
+
+function console.clear()
+  console.lines = {}
+  console.scroll = 0
+end
+
+-- ============================================================
+-- ПЕРЕХВАТ PRINT
+-- ============================================================
+
+local function hookPrint(...)
+  local n = select("#", ...)
+  local parts = {}
+  for i = 1, n do
+    parts[i] = tostring(select(i, ...))
+  end
+  local msg = table.concat(parts, "\t")
+
+  -- в буфер консоли
+  console.push(msg, C.info)
+
+  -- и в настоящий stdout
+  return originalPrint(...)
+end
+
+-- ============================================================
+-- ИНИЦИАЛИЗАЦИЯ / ХУК ОШИБОК
+-- ============================================================
+
+function console.init()
+  if not font then
+    -- Сначала пробуем красивый шрифт, но не падаем если нет
+    local ok, f = pcall(love.graphics.newFont, "assets/fonts/YahfieHeavy.ttf", FONT_SIZE)
+    if ok and f then
+      font = f
+    else
+      font = love.graphics.newFont(FONT_SIZE)
+    end
+  end
+
+  -- Перехватываем print глобально
+  if print ~= hookPrint then
+    print = hookPrint
+  end
+
+  -- Перехватываем love.errorhandler (вызывается при необработанной ошибке)
+  local originalErrorHandler = love.errorhandler
+  love.errorhandler = function(msg)
+    console.push("=== LÖVE ERROR ===", C.error)
+    console.push(msg, C.error)
+    console.push("==================", C.error)
+    -- Показываем консоль автоматически
+    console.isOpen = true
+    console.scroll = 0
+    -- Возвращаем стандартный обработчик, чтобы игра не падала молча
+    if originalErrorHandler then
+      return originalErrorHandler(msg)
+    end
+  end
+
+  -- Стартовое сообщение
+  console.push("[console] Инициализирована. Alt+F1 — открыть/закрыть.", C.system)
+end
+
+-- ============================================================
+-- ВВОД
+-- ============================================================
+
+function console.keypressed(key)
+  -- Alt + F1 — переключение
+  if key == "f1" then
+    console.isOpen = not console.isOpen
+    if console.isOpen then console.scroll = 0 end
+    return true
+  end
+
+  if not console.isOpen then return false end
+
+  if key == "escape" then
+    console.isOpen = false
+    return true
+  elseif key == "c" and love.keyboard.isDown("lctrl", "rctrl") then
+    console.clear()
+    return true
+  elseif key == "up" then
+    console.scroll = math.min(console.scroll + 1, math.max(0, #console.lines - 1))
+    return true
+  elseif key == "down" then
+    console.scroll = math.max(0, console.scroll - 1)
+    return true
+  elseif key == "pageup" then
+    console.scroll = math.min(console.scroll + 15, math.max(0, #console.lines - 1))
+    return true
+  elseif key == "pagedown" then
+    console.scroll = math.max(0, console.scroll - 15)
+    return true
+  elseif key == "home" then
+    console.scroll = math.max(0, #console.lines - 1)
+    return true
+  elseif key == "end" then
+    console.scroll = 0
+    return true
+  end
+
+  -- Пока консоль открыта — глушим остальные клавиши
+  return true
+end
+
+function console.wheelmoved(x, y)
+  if not console.isOpen then return false end
+  if y > 0 then
+    console.scroll = math.min(console.scroll + 3, math.max(0, #console.lines - 1))
+  elseif y < 0 then
+    console.scroll = math.max(0, console.scroll - 3)
+  end
+  return true
+end
+
+-- ============================================================
+-- ОТРИСОВКА
+-- ============================================================
+
+function console.draw()
+  if not console.isOpen then return end
+  if not font then return end
+
+  local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+  local w = sw - 40
+  local h = math.floor(sh * 0.55)
+  local x = 20
+  local y = sh - h - 20
+
+  -- Фон
+  love.graphics.setColor(C.bg)
+  love.graphics.rectangle("fill", x, y, w, h, 6, 6)
+
+  -- Рамка
+  love.graphics.setColor(C.border)
+  love.graphics.rectangle("line", x, y, w, h, 6, 6)
+
+  -- Заголовок
+  love.graphics.setFont(font)
+  love.graphics.setColor(C.system)
+  love.graphics.print("КОНСОЛЬ  (Alt+F1 — закрыть, Ctrl+C — очистить, Стрелки — скролл)",
+                      x + PAD, y + PAD - 2)
+
+  -- Область строк
+  local viewY = y + PAD + LINE_H + 4
+  local viewH = h - (viewY - y) - PAD
+  local viewX = x + PAD
+  local viewW = w - PAD * 2 - 8  -- место под скроллбар
+
+  local totalLines = #console.lines
+  local maxVisible = math.floor(viewH / LINE_H)
+  local endIndex   = totalLines - console.scroll
+  local startIndex = math.max(1, endIndex - maxVisible + 1)
+  endIndex         = math.min(totalLines, startIndex + maxVisible - 1)
+
+  love.graphics.setScissor(viewX, viewY, viewW, viewH)
+
+  local ty = viewY
+  for i = startIndex, endIndex do
+    local line = console.lines[i]
+    love.graphics.setColor(line.color or C.info)
+    -- обрезаем слишком длинные строки по ширине
+    local s = line.text
+    if font:getWidth(s) > viewW then
+      while #s > 0 and font:getWidth(s .. "…") > viewW do
+        s = s:sub(1, -2)
+      end
+      s = s .. "…"
+    end
+    love.graphics.print(s, viewX, ty)
+    ty = ty + LINE_H
+  end
+
+  love.graphics.setScissor()
+
+  -- Скроллбар
+  if totalLines > maxVisible then
+    local trackX = x + w - PAD - 6
+    local trackY = viewY
+    local trackH = viewH
+
+    love.graphics.setColor(0, 0, 0, 0.4)
+    love.graphics.rectangle("fill", trackX, trackY, 6, trackH, 3, 3)
+
+    local thumbH = math.max(20, trackH * (maxVisible / totalLines))
+    local t = 1 - (console.scroll / math.max(1, totalLines - maxVisible))
+    t = math.max(0, math.min(1, t))
+    local thumbY = trackY + t * (trackH - thumbH)
+
+    love.graphics.setColor(0.7, 0.7, 0.75, 1)
+    love.graphics.rectangle("fill", trackX, thumbY, 6, thumbH, 3, 3)
+  end
+end
+
+return console
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/helpers/timer.lua
+============================================================
+-- helpers/timer.lua
+local Timer = {}
+
+local tasks = {}          -- список активных задач
+local paused = false      -- глобальная пауза
+local idCounter = 0       -- для уникальных id
+
+-- ============================================================
+--  Утилиты
+-- ============================================================
+
+local function newTask(props)
+  idCounter = idCounter + 1
+  local task = {
+    id          = idCounter,
+    time        = props.time or 0,
+    interval    = props.interval,
+    callback    = props.callback,
+    onCancel    = props.onCancel,
+    onFinish    = props.onFinish,
+    cancelled   = false,
+    paused      = false,
+    repeating   = props.repeating or false,
+    remaining   = props.remaining,   -- сколько раз ещё повторить (nil = бесконечно)
+    elapsed     = 0,
+  }
+  table.insert(tasks, task)
+  return task
+end
+
+-- ============================================================
+--  Основные функции
+-- ============================================================
+
+--- Выполнить callback через delay секунд
+function Timer.after(delay, callback, onFinish)
+  return newTask({
+    time     = delay,
+    callback = callback,
+    onFinish = onFinish,
+  })
+end
+
+--- Выполнить callback через delay секунд (синоним Timer.after)
+function Timer.delay(delay, callback, onFinish)
+  return Timer.after(delay, callback, onFinish)
+end
+
+--- Выполнить callback каждые interval секунд
+--- @param interval number
+--- @param callback function
+--- @param count number|nil  сколько раз выполнить (nil = бесконечно)
+function Timer.every(interval, callback, count)
+  return newTask({
+    time      = interval,
+    interval  = interval,
+    callback  = callback,
+    repeating = true,
+    remaining = count,
+  })
+end
+
+--- Выполнить callback N раз с интервалом interval
+function Timer.repeat_(interval, count, callback)
+  return Timer.every(interval, callback, count)
+end
+
+--- Выполнить callback один раз после задержки, затем повторять каждые interval
+function Timer.afterEvery(delay, interval, callback)
+  local task
+  task = Timer.after(delay, function()
+    callback()
+    task.repeating = true
+    task.interval  = interval
+    task.time      = interval
+  end)
+  return task
+end
+
+-- ============================================================
+--  Управление задачами
+-- ============================================================
+
+--- Отменить задачу
+function Timer.cancel(task)
+  if not task or task.cancelled then return end
+  task.cancelled = true
+  if task.onCancel then task.onCancel(task) end
+end
+
+--- Поставить задачу на паузу
+function Timer.pause(task)
+  if task then task.paused = true end
+end
+
+--- Снять задачу с паузы
+function Timer.resume(task)
+  if task then task.paused = false end
+end
+
+--- Проверить, активна ли задача
+function Timer.isActive(task)
+  return task and not task.cancelled
+end
+
+--- Найти задачу по id
+function Timer.get(id)
+  for _, t in ipairs(tasks) do
+    if t.id == id then return t end
+  end
+end
+
+-- ============================================================
+--  Глобальная пауза
+-- ============================================================
+
+function Timer.pauseAll()  paused = true  end
+function Timer.resumeAll() paused = false end
+
+-- ============================================================
+--  Обновление (вызывать в love.update(dt))
+-- ============================================================
+
+function Timer.update(dt)
+  if paused then return end
+
+  for i = #tasks, 1, -1 do
+    local t = tasks[i]
+
+    -- Удаление отменённых
+    if t.cancelled then
+      table.remove(tasks, i)
+    elseif not t.paused then
+      t.time    = t.time - dt
+      t.elapsed = t.elapsed + dt
+
+      if t.time <= 0 then
+        -- Защита от ошибок в callback
+        local ok, err = pcall(t.callback, t)
+        if not ok then
+          print("[Timer] Ошибка в callback #" .. t.id .. ": " .. tostring(err))
+        end
+
+        if t.repeating and not t.cancelled then
+          if t.remaining then
+            t.remaining = t.remaining - 1
+            if t.remaining <= 0 then
+              if t.onFinish then t.onFinish(t) end
+              table.remove(tasks, i)
+            else
+              t.time = t.time + t.interval
+            end
+          else
+            t.time = t.time + t.interval
+          end
+        else
+          if t.onFinish then t.onFinish(t) end
+          table.remove(tasks, i)
+        end
+      end
+    end
+  end
+end
+
+-- ============================================================
+--  Очистка
+-- ============================================================
+
+--- Сбросить все таймеры
+function Timer.clear()
+  for _, t in ipairs(tasks) do
+    t.cancelled = true
+  end
+  tasks = {}
+  paused = false
+end
+
+--- Получить количество активных задач
+function Timer.count()
+  return #tasks
+end
+
+return Timer
+============================================================
+
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/fonts/Title.ttf - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/fonts/YahfieHeavy.ttf - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/media/fil-slp-mm-01.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/media/bg.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/media/vilg-sch-mm-01.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/assets/media/dtr-sch-mm-01.png - (бинарный файл или недоступен для чтения)
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/meta.lua
+============================================================
+-- chapters/ch-1/meta.lua
+return {
+  id = 1,
+  title = "Предыстория",
+  subtitle = "Глава 1",
+  desc = "Начало истории. Познакомьтесь с Вильгельмом, Дитрихом и Филиппом!",
+  order = 1, 
+  locked = false, 
+}
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/init.lua
+============================================================
+local Dialog = assert(love.filesystem.load(
+  "chapters/ch-1/helpers/dialog.lua"))()
+
+local Fade = require("helpers.fade")
+local Timer = require("helpers.timer")
+
+local chapter = {}
+
+local prevMode = nil
+local bgImage  = nil
+
+-- ============================================================
+-- СЦЕНАРИЙ
+-- ============================================================
+
+local function firstScene()
+  Dialog.start({
+    { text = "<speed 15>1880 ГОД." },
+    { text = "Ох, <delay 0.4>интересный же год был!" },
+    { text = "<speed 18>Фёдор Достоевский произнёс свою знаменитую фразу о Пушкине... <delay 0.2><speed 15>Завершилась Вторая <speed 12>англо-афганская война, <speed 10>началась Первая <speed 8>англо-бурская война..." },
+    { text = "<speed 3>..." },
+    { text = "Ну, <delay 0.4>зато 27 сентября родился Жак Тибо, <delay 0.4>французский скрипач. <delay 0.2><speed 10>Хоть что-то." },
+    { text = "<speed 17>Ладно, <delay 0.4>Вы, <delay 0.4>как я вижу, <delay 0.4>собрались на другое торжество посмотреть, <delay 0.5>верно?" },
+    { choices = {
+        { text = "Да, конечно.",               onClick = function() print("[ch-1] Выбор: да")  end },
+        { text = "Да не, я историю забыл сделать.", onClick = function() print("[ch-1] Выбор: нет") end },
+    } },
+    { text = "<speed 16>Что бы Вы не сказали, <delay 0.4>я всё равно расскажу Вам о том, <delay 0.4>как зародилась целая империя всего из 1 пары" },
+  }, function()
+    print("[ch-1] Диалог завершён")
+    Fade.fadeOut(1.5, function()
+      secondScene()
+    end)
+  end)
+end
+function secondScene()
+      Fade.fadeIn(1.5, function()
+          
+    end)
+  Dialog.start({
+    { text = "<speed 15>РОССИЙСКАЯ ИМПЕРИЯ, <delay 0.5>ДЕРПТ. <delay 0.5>12 ОКТЯБРЯ 1880 ГОДА."},
+    { text = "<speed 18>Это был самый обыкновенный день, <delay 0.5>где-то час дня, <delay 0.5>как вдруг..."},
+    { text = "<speed 18>На улице появилась женщина. <delay 0.5>На вид лет двадцати. <delay 0.5>Она была немкой. <delay 0.5>Несла на руках новорождённого ребёнка в пелёнках.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "Она прижимала ребёнка к себе и нежно улыбалась.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "<speed 16>Мимо тянулись дрожки, <delay 0.5>где-то лаяла собака, <delay 0.5>пахло сырым камнем и дымом. <delay 0.6>Обычный день. <delay 0.5>Никто и не глянул бы на неё дважды.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Женщина",
+  text = "<wave><speed 18>Хм..</wave>",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "<speed 17>Она остановилась у витрины аптеки своего отца, <delay 0.5>поправила пелёнку, <delay 0.5>и тихо, <delay 0.4>одними губами, <delay 0.4>что-то прошептала ребёнку по-немецки.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "И тут... <delay 0.5>Подошёл мужчина.",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "Лет ему было около тридцати, <delay 0.8>по внешности был с виду русским. <delay 0.8>Он удивлённо фыркнул, <delay 0.8>голос у него был глубоким и низким.",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ text = "<speed 16>Он перекрестился на купол вдалеке, <delay 0.5>и только потом подошёл ближе.",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "<speed 18>Ну и как ты его назовёшь? <delay 0.5>Мне вот больше Дмитрий нравится.",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Женщина",
+  text = "<speed 17>Дмитрий... <delay 0.6>Это по-вашему, <delay 0.4>по-русски. <delay 0.6>А я хочу, <delay 0.4>чтобы у него было и моё тоже.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "<speed 18>И моё, и твоё - <delay 0.5>так не бывает. <delay 0.6>Одно имя дают, <delay 0.4>одно. <delay 0.5>Перед Богом.",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Женщина",
+  text = "Мне нравится больше Дитрих... <delay 0.8>Может быть... <delay 0.5>Дитрихом всё-таки назовём?",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start2.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+
+{ name = "Мужчина",
+  text = "<speed 20>Дитрих... <delay 0.6><wave>Дитрих.</wave>",
+  portrait = "chapters/ch-1/assets/characters/dad/looking1.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "<speed 25>Да что же за имя-то такое неправославное?! <delay 0.4>Крестить же надо!</shake>",
+  portrait = "chapters/ch-1/assets/characters/dad/looking2.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "Ты слышишь себя вообще? <delay 0.6>Глупое имя какое-то...",
+  portrait = "chapters/ch-1/assets/characters/dad/looking2.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+
+{ name = "Женщина",
+  text = "<speed 17><wave>Не смей так говорить!</wave> <delay 0.6>Это имя моего прадеда.. <delay 0.6>Оно честное!..",
+  portrait = "chapters/ch-1/assets/characters/mom/baby_sad.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "Ох, <delay 0.6>прости, дорогая.",
+  portrait = "chapters/ch-1/assets/characters/dad/so_sorry.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Женщина",
+  text = "<speed 18>Крестить - <delay 0.4>да. <delay 0.6>Пусть Дмитрий будет... <delay 0.6>Но пусть дома я буду звать его как пожелаю! <delay 0.6>А так, сам привыкнет к имени собственному.",
+  portrait = "chapters/ch-1/assets/characters/mom/baby-start2.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "<speed 17><wave>Господи, спаси и сохрани...</wave> <delay 0.6><speed 20>Ладно, <delay 0.4>пусть будет так! <delay 0.5><speed 17>Дай хотя бы лик сына узреть.",
+  portrait = "chapters/ch-1/assets/characters/dad/dissapointed.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Мужчина",
+  text = "<speed 30>А ну-ка, <delay 0.5>дай мне его сюда!",
+  portrait = "chapters/ch-1/assets/characters/mom/baby_sad.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Женщина",
+  text = "<speed 20><wave>Фридрих!</wave>",
+  portrait = "chapters/ch-1/assets/characters/mom/sad.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+{ name = "Фёдор (Фридрих)",
+  text = "<speed 20>Какой я тебе <wave>Фридрих</wave>? <delay 0.5>Фёдор имя мне! <delay 0.5>Сто и один раз повторял тебе!",
+  portrait = "chapters/ch-1/assets/characters/dad/baby_hold.png",
+  portraitMode = "fit",
+  portraitW = 300, portraitH = 288,
+  portraitAlign = "topleft",
+  portraitOffsetX = 20, portraitOffsetY = -285 },
+
+  }, function()
+
+    print("[ch-1] Диалог завершён")
+  end)
+end
+
+-- ============================================================
+-- LÖVE
+-- ============================================================
+
+function chapter.load()
+  local w, h, flags = love.window.getMode()
+  prevMode = {
+    width      = w,
+    height     = h,
+    fullscreen = love.window.getFullscreen(),
+    flags      = flags,
+  }
+
+  love.window.setMode(1080, 720, {
+    fullscreen = true,
+    borderless = false,
+    resizable  = false,
+    vsync      = 1,
+    msaa       = 0,
+    centered   = true,
+  })
+
+  local ok, img = pcall(love.graphics.newImage,
+    "chapters/ch-1/assets/bg/apteka1.png")
+  if ok then bgImage = img end
+
+  -- Старт с чёрного экрана, затем плавное появление
+  Fade.set(1)
+  Fade.fadeIn(1.5, function()
+    firstScene()
+  end)
+
+end
+
+function chapter.update(dt)
+  Fade.update(dt)
+  Dialog.update(dt)
+end
+
+function chapter.draw()
+  if bgImage then
+    local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+    local iw, ih = bgImage:getWidth(), bgImage:getHeight()
+    local scale  = math.max(sw / iw, sh / ih)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(bgImage,
+      (sw - iw * scale) / 2, (sh - ih * scale) / 2,
+      0, scale, scale)
+  else
+    love.graphics.clear(0.1, 0.1, 0.12)
+  end
+
+  Dialog.draw()
+  Fade.draw()
+end
+
+function chapter.mousepressed(x, y, b)
+  if Fade.active then return end
+  if Dialog.mousepressed(x, y, b) then return end
+end
+
+function chapter.mousemoved(x, y, dx, dy)
+  if Fade.active then return end
+  Dialog.mousemoved(x, y)
+end
+
+function chapter.mousereleased(x, y, b)
+  -- если понадобится
+end
+
+function chapter.keypressed(key)
+  if Fade.active then return end
+  if Dialog.keypressed(key) then return end
+end
+
+function chapter.unload()
+  Dialog.reset()
+  Fade.cancel()
+
+  if prevMode then
+    love.window.setMode(prevMode.width, prevMode.height, {
+      fullscreen = prevMode.fullscreen,
+      borderless = true,
+      resizable  = false,
+      vsync      = 1,
+      msaa       = 0,
+    })
+    prevMode = nil
+  end
+end
+
+return chapter
+============================================================
+
+
+============================================================
+ФАЙЛ: ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/helpers/dialog.lua
+============================================================
+-- chapters/ch-1/helpers/dialog.lua
+-- Минималистичное диалоговое окно для визуальной новеллы.
+-- Поддерживает инлайн-маркеры: <delay 2.0>, <speed 30>, <shake>, <wave>
+-- Поддерживает портреты с гибким позиционированием и масштабированием.
+
+local Dialog = {}
+
+-- ============================================================
+-- UTF-8 ХЕЛПЕРЫ
+-- ============================================================
+
+local function utf8chars(s)
+  local chars = {}
+  local i = 1
+  local n = #s
+  while i <= n do
+    local b = s:byte(i)
+    local len = 1
+    if b >= 0xF0 then len = 4
+    elseif b >= 0xE0 then len = 3
+    elseif b >= 0xC0 then len = 2 end
+    chars[#chars + 1] = s:sub(i, i + len - 1)
+    i = i + len
+  end
+  return chars
+end
+
+-- ============================================================
+-- ПАРСЕР МАРКЕРОВ
+-- ============================================================
+
+local function parseMarkers(text)
+  local tokens = {}
+  local activeEffects = {}
+  local i = 1
+  local n = #text
+
+  while i <= n do
+    local lt = text:find("<", i, true)
+    if not lt then
+      local rest = text:sub(i)
+      for _, ch in ipairs(utf8chars(rest)) do
+        local eff = nil
+        for k in pairs(activeEffects) do eff = eff or {}; eff[k] = true end
+        tokens[#tokens + 1] = { type = "char", value = ch, effect = eff }
+      end
+      break
+    end
+
+    if lt > i then
+      local chunk = text:sub(i, lt - 1)
+      for _, ch in ipairs(utf8chars(chunk)) do
+        local eff = nil
+        for k in pairs(activeEffects) do eff = eff or {}; eff[k] = true end
+        tokens[#tokens + 1] = { type = "char", value = ch, effect = eff }
+      end
+    end
+
+    local gt = text:find(">", lt + 1, true)
+    if not gt then
+      tokens[#tokens + 1] = { type = "char", value = "<", effect = nil }
+      i = lt + 1
+    else
+      local raw = text:sub(lt + 1, gt - 1)
+      local cmd, arg = raw:match("^%s*(%S+)%s*(.*)$")
+      cmd = (cmd or ""):lower()
+
+      if cmd == "delay" then
+        local val = tonumber(arg) or 0.5
+        tokens[#tokens + 1] = { type = "delay", value = val }
+      elseif cmd == "speed" then
+        local val = tonumber(arg) or 45
+        tokens[#tokens + 1] = { type = "speed", value = val }
+      elseif cmd == "shake" then
+        activeEffects.shake = true
+        tokens[#tokens + 1] = { type = "effect", value = "shake", on = true }
+      elseif cmd == "/shake" then
+        activeEffects.shake = nil
+        tokens[#tokens + 1] = { type = "effect", value = "shake", on = false }
+      elseif cmd == "wave" then
+        activeEffects.wave = true
+        tokens[#tokens + 1] = { type = "effect", value = "wave", on = true }
+      elseif cmd == "/wave" then
+        activeEffects.wave = nil
+        tokens[#tokens + 1] = { type = "effect", value = "wave", on = false }
+      else
+        -- неизвестный маркер — игнорируем
+      end
+
+      i = gt + 1
+    end
+  end
+
+  return tokens
+end
+
+-- ============================================================
+-- НАСТРОЙКИ ВНЕШНЕГО ВИДА
+-- ============================================================
+
+local CFG = {
+  padX        = 60,
+  padBottom   = 40,
+  height      = 200,
+  corner      = 8,
+
+  boxColor    = {0.05, 0.05, 0.07, 0.88},
+  borderColor = {0.35, 0.35, 0.4, 0.9},
+  nameColor   = {0.95, 0.85, 0.55, 1},
+  textColor   = {0.95, 0.95, 0.95, 1},
+  hintColor   = {0.6, 0.6, 0.65, 1},
+
+  nameSize    = 45,
+  textSize    = 32,
+  hintSize    = 26,
+
+  cps         = 25,
+  clickDelay  = 0.12,
+
+  -- ============================================================
+  -- НАСТРОЙКИ ПОРТРЕТА ПО УМОЛЧАНИЮ
+  -- ============================================================
+  -- Всё это можно переопределить в конкретной реплике:
+  --   { text = "...", portrait = "path.png",
+  --     portraitX = 20, portraitY = -288 + 20, portraitMode = "fit",
+  --     portraitW = 300, portraitH = 288, portraitAlign = "custom" }
+  portrait = {
+    -- Режим масштабирования:
+    --   "native"  — без масштаба, 1:1 (использует portraitW/H только для позиции)
+    --   "fit"     — вписать в portraitW × portraitH, сохраняя пропорции (по умолчанию)
+    --   "stretch" — растянуть ровно в portraitW × portraitH (без сохранения пропорций)
+    --   "scale"   — умножить на portraitScale
+    mode = "fit",
+
+    -- Размеры бокса для "fit"/"stretch". nil = не ограничивать по этой оси.
+    -- Если оба nil — работает как "native".
+    w = nil,
+    h = 288,
+
+    -- Множитель для mode = "scale"
+    scale = 1.0,
+
+    -- Позиционирование относительно окна диалога (bx, by, bw, bh):
+    --   "topleft" | "topright" | "bottomleft" | "bottomright" | "center"
+    --   "above"   — над окном, по центру
+    --   "custom"  — только X/Y
+    align = "topleft",
+
+    -- Отступы от выбранного угла/края (работают во всех align, кроме custom)
+    offsetX = 20,
+    offsetY = 20,
+
+    -- Явные координаты для align = "custom" или как дополнительный сдвиг
+    x = 0,
+    y = 0,
+
+    -- Пивот (origin) в долях от размера изображения: {0..1, 0..1}.
+    -- (0,0) — левый верх, (1,1) — правый низ, (0.5,0.5) — центр.
+    -- Нужен, если будешь анимировать масштаб/поворот.
+    pivotX = 0,
+    pivotY = 0,
+
+    -- Цвет (можно тонировать)
+    tint = {1, 1, 1, 1},
+  },
+}
+
+-- ============================================================
+-- СОСТОЯНИЕ
+-- ============================================================
+
+Dialog.isActive      = false
+Dialog.queue         = {}
+Dialog.current       = nil
+Dialog.tokens        = {}
+Dialog.visibleCount  = 0
+Dialog.timer         = 0
+Dialog.delayTimer    = 0
+Dialog.clickTimer    = 0
+Dialog.waiting       = false
+Dialog.choices       = nil
+Dialog.hoveredChoice = nil
+Dialog.onEnd         = nil
+
+Dialog.currentCPS    = CFG.cps
+
+local fonts = {}
+local portraits = {}
+
+-- ============================================================
+-- ЗАГРУЗКА РЕСУРСОВ
+-- ============================================================
+
+local function ensureFonts()
+  if fonts.name then return end
+  local ok, f = pcall(love.graphics.newFont, "assets/fonts/YahfieHeavy.ttf", CFG.nameSize)
+  fonts.name = (ok and f) or love.graphics.newFont(CFG.nameSize)
+
+  ok, f = pcall(love.graphics.newFont, "assets/fonts/YahfieHeavy.ttf", CFG.textSize)
+  fonts.text = (ok and f) or love.graphics.newFont(CFG.textSize)
+
+  ok, f = pcall(love.graphics.newFont, "assets/fonts/YahfieHeavy.ttf", CFG.hintSize)
+  fonts.hint = (ok and f) or love.graphics.newFont(CFG.hintSize)
+end
+
+local function getPortrait(path)
+  if not path then return nil end
+  if portraits[path] == false then return nil end
+  if portraits[path] then return portraits[path] end
+  local ok, img = pcall(love.graphics.newImage, path)
+  if ok and img then
+    img:setFilter("linear", "linear")
+    portraits[path] = img
+  else
+    portraits[path] = false
+    print("[dialog] Не удалось загрузить портрет: " .. tostring(path))
+  end
+  return portraits[path]
+end
+
+-- ============================================================
+-- ПУБЛИЧНОЕ API
+-- ============================================================
+
+function Dialog.start(lines, onEnd)
+  ensureFonts()
+  Dialog.queue    = {}
+  for i, l in ipairs(lines or {}) do
+    Dialog.queue[i] = l
+  end
+  Dialog.onEnd    = onEnd
+  Dialog.isActive = true
+  Dialog.waiting  = false
+  Dialog.choices  = nil
+  Dialog._advance()
+end
+
+function Dialog.stop()
+  Dialog.isActive     = false
+  Dialog.queue        = {}
+  Dialog.current      = nil
+  Dialog.tokens       = {}
+  Dialog.choices      = nil
+  Dialog.waiting      = false
+end
+
+function Dialog.push(line)
+  if not Dialog.isActive then
+    Dialog.start({line})
+    return
+  end
+  table.insert(Dialog.queue, line)
+end
+
+-- ============================================================
+-- ЛОГИКА
+-- ============================================================
+
+function Dialog._advance()
+  Dialog.visibleCount = 0
+  Dialog.timer        = 0
+  Dialog.delayTimer   = 0
+  Dialog.choices      = nil
+  Dialog.waiting      = false
+  Dialog.tokens       = {}
+  Dialog.currentCPS   = CFG.cps
+
+  if #Dialog.queue == 0 then
+    Dialog.current  = nil
+    Dialog.isActive = false
+    if Dialog.onEnd then
+      local cb = Dialog.onEnd
+      Dialog.onEnd = nil
+      cb()
+    end
+    return
+  end
+
+  Dialog.current = table.remove(Dialog.queue, 1)
+  Dialog.tokens  = parseMarkers(Dialog.current.text or "")
+
+  if Dialog.current.choices then
+    Dialog.waiting = true
+    Dialog.choices = Dialog.current.choices
+    Dialog.hoveredChoice = nil
+  end
+end
+
+local function isTextComplete()
+  if not Dialog.current then return true end
+  if Dialog.current.choices then return true end
+  return Dialog.visibleCount >= #Dialog.tokens
+end
+
+local function skipTyping()
+  if not Dialog.current then return end
+  if Dialog.current.choices then return end
+  Dialog.visibleCount = #Dialog.tokens
+  Dialog.delayTimer   = 0
+end
+
+local function getVisibleTokens()
+  local out = {}
+  for i = 1, Dialog.visibleCount do
+    out[i] = Dialog.tokens[i]
+  end
+  return out
+end
+
+-- ============================================================
+-- ОБНОВЛЕНИЕ
+-- ============================================================
+
+function Dialog.update(dt)
+  if not Dialog.isActive then return end
+  if Dialog.clickTimer > 0 then Dialog.clickTimer = Dialog.clickTimer - dt end
+
+  if Dialog.waiting then return end
+  if not Dialog.current then return end
+
+  if Dialog.delayTimer > 0 then
+    Dialog.delayTimer = Dialog.delayTimer - dt
+    if Dialog.delayTimer <= 0 then
+      Dialog.delayTimer = 0
+    end
+    return
+  end
+
+  local total = #Dialog.tokens
+
+  while Dialog.visibleCount < total do
+    local nextTok = Dialog.tokens[Dialog.visibleCount + 1]
+
+    if nextTok.type == "delay" then
+      Dialog.visibleCount = Dialog.visibleCount + 1
+      Dialog.delayTimer = nextTok.value
+      return
+    elseif nextTok.type == "speed" then
+      Dialog.visibleCount = Dialog.visibleCount + 1
+      Dialog.currentCPS = nextTok.value
+    elseif nextTok.type == "effect" then
+      Dialog.visibleCount = Dialog.visibleCount + 1
+    else
+      if Dialog.currentCPS > 0 then
+        Dialog.timer = Dialog.timer + dt
+        local step = 1 / Dialog.currentCPS
+        if Dialog.timer >= step then
+          Dialog.timer = Dialog.timer - step
+          Dialog.visibleCount = Dialog.visibleCount + 1
+        else
+          break
+        end
+      else
+        Dialog.visibleCount = Dialog.visibleCount + 1
+      end
+    end
+  end
+end
+
+-- ============================================================
+-- ВВОД
+-- ============================================================
+
+function Dialog.mousepressed(x, y, button)
+  if not Dialog.isActive or button ~= 1 then return false end
+  if Dialog.clickTimer > 0 then return true end
+  Dialog.clickTimer = CFG.clickDelay
+
+  if Dialog.waiting and Dialog.choices then
+    local hit = Dialog._hitChoice(x, y)
+    if hit then
+      local c = Dialog.choices[hit]
+      Dialog.choices = nil
+      Dialog.waiting = false
+      if c.onClick then c.onClick() end
+      Dialog._advance()
+    end
+    return true
+  end
+
+  if isTextComplete() then
+    Dialog._advance()
+  else
+    skipTyping()
+  end
+  return true
+end
+
+function Dialog.keypressed(key)
+  if not Dialog.isActive then return false end
+  if key == "space" or key == "return" or key == "kpenter" then
+    if Dialog.clickTimer > 0 then return true end
+    Dialog.clickTimer = CFG.clickDelay
+
+    if Dialog.waiting and Dialog.choices then
+      local c = Dialog.choices[1]
+      if c and c.onClick then c.onClick() end
+      Dialog.choices = nil
+      Dialog.waiting = false
+      Dialog._advance()
+    elseif isTextComplete() then
+      Dialog._advance()
+    else
+      skipTyping()
+    end
+    return true
+  end
+  return false
+end
+
+function Dialog.mousemoved(x, y)
+  if not Dialog.isActive or not Dialog.waiting or not Dialog.choices then
+    Dialog.hoveredChoice = nil
+    return
+  end
+  Dialog.hoveredChoice = Dialog._hitChoice(x, y)
+end
+
+-- ============================================================
+-- ГЕОМЕТРИЯ
+-- ============================================================
+
+local function getBox()
+  local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+  local x = CFG.padX
+  local w = sw - CFG.padX * 2
+  local h = CFG.height
+  local y = sh - h - CFG.padBottom
+  return x, y, w, h
+end
+
+function Dialog._hitChoice(mx, my)
+  if not Dialog.choices then return nil end
+  local bx, by, bw, bh = getBox()
+  local listTop = by + 16
+  local listH   = bh - 32
+  local n       = #Dialog.choices
+  local gap     = 8
+  local itemH   = math.min(48, (listH - gap * (n - 1)) / n)
+  local startY  = listTop + (listH - (itemH * n + gap * (n - 1))) / 2
+
+  for i = 1, n do
+    local iy = startY + (i - 1) * (itemH + gap)
+    if mx >= bx + 20 and mx <= bx + bw - 20
+       and my >= iy and my <= iy + itemH then
+      return i
+    end
+  end
+  return nil
+end
+
+-- ============================================================
+-- ОТРИСОВКА ПОРТРЕТА (гибкая)
+-- ============================================================
+
+-- Собирает эффективные настройки портрета: CFG.portrait + переопределения из реплики
+local function resolvePortraitCfg(line)
+  local base = CFG.portrait
+  return {
+    mode     = line.portraitMode     or base.mode,
+    w        = line.portraitW        or base.w,
+    h        = line.portraitH        or base.h,
+    scale    = line.portraitScale    or base.scale,
+    align    = line.portraitAlign    or base.align,
+    offsetX  = line.portraitOffsetX  or base.offsetX,
+    offsetY  = line.portraitOffsetY  or base.offsetY,
+    x        = line.portraitX        or base.x,
+    y        = line.portraitY        or base.y,
+    pivotX   = line.portraitPivotX   or base.pivotX,
+    pivotY   = line.portraitPivotY   or base.pivotY,
+    tint     = line.portraitTint     or base.tint,
+  }
+end
+
+-- Вычисляет масштаб и итоговые размеры портрета
+local function computePortraitSize(img, pc)
+  local iw, ih = img:getWidth(), img:getHeight()
+  local sx, sy = 1, 1
+
+  if pc.mode == "stretch" then
+    if pc.w then sx = pc.w / iw end
+    if pc.h then sy = pc.h / ih end
+    if pc.w and not pc.h then sy = sx end
+    if pc.h and not pc.w then sx = sy end
+  elseif pc.mode == "scale" then
+    sx, sy = pc.scale, pc.scale
+  elseif pc.mode == "fit" then
+    -- Вписать в бокс pc.w × pc.h, сохраняя пропорции.
+    -- Если задана только одна ось — масштабируем по ней.
+    local s = 1
+    if pc.w and pc.h then
+      s = math.min(pc.w / iw, pc.h / ih)
+    elseif pc.w then
+      s = pc.w / iw
+    elseif pc.h then
+      s = pc.h / ih
+    end
+    sx, sy = s, s
+  else -- "native"
+    sx, sy = 1, 1
+  end
+
+  return iw * sx, ih * sy, sx, sy
+end
+
+local function drawPortrait(img, line, bx, by, bw, bh)
+  if not img then return end
+
+  local pc = resolvePortraitCfg(line)
+  local w, h, sx, sy = computePortraitSize(img, pc)
+
+  -- Позиция в зависимости от align
+  local x, y
+  if pc.align == "topleft" then
+    x = bx + pc.offsetX
+    y = by + pc.offsetY
+  elseif pc.align == "topright" then
+    x = bx + bw - w - pc.offsetX
+    y = by + pc.offsetY
+  elseif pc.align == "bottomleft" then
+    x = bx + pc.offsetX
+    y = by + bh - h - pc.offsetY
+  elseif pc.align == "bottomright" then
+    x = bx + bw - w - pc.offsetX
+    y = by + bh - h - pc.offsetY
+  elseif pc.align == "center" then
+    x = bx + (bw - w) / 2
+    y = by + (bh - h) / 2
+  elseif pc.align == "above" then
+    x = bx + (bw - w) / 2
+    y = by - h - pc.offsetY
+  else -- "custom"
+    x = bx + pc.x
+    y = by + pc.y
+  end
+
+  -- Дополнительный сдвиг (полезно в любом режиме)
+  x = x + (pc.x or 0)
+  y = y + (pc.y or 0)
+
+  -- Пивот в пикселях изображения (до масштаба)
+  local ox = img:getWidth()  * pc.pivotX
+  local oy = img:getHeight() * pc.pivotY
+
+  local t = pc.tint or {1, 1, 1, 1}
+  love.graphics.setColor(t[1] or 1, t[2] or 1, t[3] or 1, t[4] or 1)
+  love.graphics.draw(img, x, y, 0, sx, sy, ox, oy)
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- ============================================================
+-- ОТРИСОВКА ВЫБОРА
+-- ============================================================
+
+local function drawChoiceList(bx, by, bw, bh)
+  local listTop = by + 16
+  local listH   = bh - 32
+  local n       = #Dialog.choices
+  local gap     = 8
+  local itemH   = math.min(48, (listH - gap * (n - 1)) / n)
+  local startY  = listTop + (listH - (itemH * n + gap * (n - 1))) / 2
+
+  love.graphics.setFont(fonts.text)
+
+  for i, c in ipairs(Dialog.choices) do
+    local iy = startY + (i - 1) * (itemH + gap)
+    local ix = bx + 20
+    local iw = bw - 40
+    local hovered = (Dialog.hoveredChoice == i)
+
+    if hovered then
+      love.graphics.setColor(0.25, 0.35, 0.55, 0.95)
+    else
+      love.graphics.setColor(0.15, 0.15, 0.2, 0.9)
+    end
+    love.graphics.rectangle("fill", ix, iy, iw, itemH, 5, 5)
+
+    love.graphics.setColor(0.4, 0.4, 0.5, 1)
+    love.graphics.rectangle("line", ix, iy, iw, itemH, 5, 5)
+
+    love.graphics.setColor(CFG.textColor)
+    love.graphics.printf(c.text or "…", ix + 12,
+      iy + (itemH - fonts.text:getHeight()) / 2,
+      iw - 24, "left")
+  end
+end
+
+-- ============================================================
+-- ОТРИСОВКА ТЕКСТА
+-- ============================================================
+
+local function drawTextTokens(innerX, ty, innerW)
+  local font = fonts.text
+  love.graphics.setFont(font)
+
+  local tokens = getVisibleTokens()
+  local lineH = font:getHeight()
+  local x = innerX
+  local y = ty
+  local maxX = innerX + innerW
+  local time = love.timer.getTime()
+
+  -- Группируем токены в "единицы переноса": слова, пробелы, переносы строк.
+  -- Единица = { tokens = {...}, width = number, isSpace = bool, isNewline = bool }
+  local units = {}
+  local current = nil
+
+  local function flush()
+    if current then
+      units[#units + 1] = current
+      current = nil
+    end
+  end
+
+  for _, tok in ipairs(tokens) do
+    if tok.type ~= "char" then
+      -- Служебные токены (delay/speed/effect) не влияют на перенос —
+      -- просто пропускаем их здесь, они уже отработаны при печати.
+      -- Но чтобы не потерять эффекты — их можно было бы прикрепить,
+      -- однако на этапе отрисовки они уже не нужны.
+      -- (Ничего не делаем.)
+    else
+      local ch = tok.value
+      if ch == "\n" then
+        flush()
+        units[#units + 1] = { isNewline = true }
+      elseif ch == " " or ch == "\t" then
+        -- Пробел — отдельная единица, привязывается к предыдущему слову
+        if current and not current.isSpace then
+          -- добавляем пробел в текущее слово (хвостовой)
+          current.tokens[#current.tokens + 1] = tok
+          current.width = current.width + font:getWidth(ch)
+          current.trailingSpace = true
+        else
+          flush()
+          current = { tokens = { tok }, width = font:getWidth(ch), isSpace = true }
+        end
+      else
+        if current and not current.isSpace and not current.trailingSpace then
+          current.tokens[#current.tokens + 1] = tok
+          current.width = current.width + font:getWidth(ch)
+        else
+          flush()
+          current = { tokens = { tok }, width = font:getWidth(ch) }
+        end
+      end
+    end
+  end
+  flush()
+
+  -- Отрисовка с переносом по единицам
+  for _, unit in ipairs(units) do
+    if unit.isNewline then
+      x = innerX
+      y = y + lineH
+    else
+      -- Если единица не влезает и мы не в начале строки — переносим
+      if x + unit.width > maxX and x > innerX then
+        x = innerX
+        y = y + lineH
+        -- Если это пробел в начале строки — пропускаем его
+        if unit.isSpace then
+          goto continue
+        end
+      end
+
+      for _, tok in ipairs(unit.tokens) do
+        local ch = tok.value
+        local w = font:getWidth(ch)
+
+        local dx, dy = 0, 0
+        if tok.effect then
+          if tok.effect.shake then
+            dx = (math.random() - 0.5) * 2.5
+            dy = (math.random() - 0.5) * 2.5
+          end
+          if tok.effect.wave then
+            dy = math.sin(time * 8 + x * 0.05) * 3
+          end
+        end
+
+        love.graphics.setColor(CFG.textColor)
+        love.graphics.print(ch, x + dx, y + dy)
+        x = x + w
+      end
+    end
+    ::continue::
+  end
+
+  return y + lineH
+end
+-- ============================================================
+-- ОТРИСОВКА
+-- ============================================================
+
+function Dialog.draw()
+  if not Dialog.isActive or not Dialog.current then return end
+  ensureFonts()
+
+  local bx, by, bw, bh = getBox()
+
+  -- Портрет рисуем ДО окна, чтобы окно перекрывало его низ (если надо)
+  if Dialog.current.portrait then
+    drawPortrait(getPortrait(Dialog.current.portrait), Dialog.current, bx, by, bw, bh)
+  end
+
+  love.graphics.setColor(CFG.boxColor)
+  love.graphics.rectangle("fill", bx, by, bw, bh, CFG.corner, CFG.corner)
+
+  love.graphics.setColor(CFG.borderColor)
+  love.graphics.rectangle("line", bx, by, bw, bh, CFG.corner, CFG.corner)
+
+  if Dialog.waiting and Dialog.choices then
+    drawChoiceList(bx, by, bw, bh)
+    return
+  end
+
+  local innerX = bx + 24
+  local innerW = bw - 48
+  local ty     = by + 18
+
+  if Dialog.current.name and Dialog.current.name ~= "" then
+    love.graphics.setFont(fonts.name)
+    love.graphics.setColor(CFG.nameColor)
+    love.graphics.print(Dialog.current.name, innerX, ty)
+    ty = ty + fonts.name:getHeight() + 6
+  else
+    ty = ty + 6
+  end
+
+  drawTextTokens(innerX, ty, innerW)
+
+  if isTextComplete() then
+    local t = love.timer.getTime()
+    local alpha = 0.5 + 0.5 * math.sin(t * 4)
+    love.graphics.setFont(fonts.hint)
+    love.graphics.setColor(CFG.hintColor[1], CFG.hintColor[2], CFG.hintColor[3], alpha)
+    local hint = "ДАЛЕЕ  (ПРОБЕЛ / ЛКМ)"
+    local hw = fonts.hint:getWidth(hint)
+    love.graphics.print(hint, bx + bw - hw - 16, by + bh - fonts.hint:getHeight() - 8)
+  end
+end
+
+-- ============================================================
+-- СБРОС
+-- ============================================================
+
+function Dialog.reset()
+  Dialog.stop()
+  Dialog.onEnd  = nil
+  portraits     = {}
+end
+
+return Dialog
+============================================================
+
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/bg/spalnya_bratiev.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/bg/dom_iznutri.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/bg/apteka2.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/bg/apteka1.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/mom/baby_sad.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/mom/baby-start2.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/mom/baby-start.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/mom/sad.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/dad/so_sorry.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/dad/baby_hold.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/dad/dissapointed.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/dad/looking1.png - (бинарный файл или недоступен для чтения)
+
+📄 ПРОЕКТ «ФЕВРАЛЬ»/chapters/ch-1/assets/characters/dad/looking2.png - (бинарный файл или недоступен для чтения)
